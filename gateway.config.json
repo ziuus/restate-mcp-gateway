@@ -1,24 +1,41 @@
 {
-  "restate": {
-    "endpointPort": 9080,
-    "restateServerUrl": "http://localhost:8080"
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0"
   },
-  "mcp": {
-    "listenPort": 3000,
-    "requireApprovalTools": [
-      "delete_file",
-      "drop_table",
-      "execute_command",
-      "send_email"
+  "restate": {
+    "servicePort": 9088,
+    "ingressUrl": "http://localhost:8080"
+  },
+  "policy": {
+    "approvalTimeoutMs": 86400000,
+    "rules": [
+      {
+        "toolPattern": "delete_.*",
+        "requiresApproval": true,
+        "maxRetries": 3,
+        "timeoutMs": 30000
+      },
+      {
+        "toolPattern": "execute_.*",
+        "requiresApproval": true,
+        "maxRetries": 3,
+        "timeoutMs": 30000
+      },
+      {
+        "toolPattern": "drop_.*",
+        "requiresApproval": true,
+        "maxRetries": 3,
+        "timeoutMs": 30000
+      }
     ]
   },
   "targetServers": [
     {
       "id": "system-tools",
       "command": "node",
-      "args": [
-        "dist/sample-mcp-server.js"
-      ]
+      "args": ["dist/sample-mcp-server.js"],
+      "autoRestart": true
     }
   ]
 }

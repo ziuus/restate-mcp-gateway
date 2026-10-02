@@ -1,25 +1,42 @@
 import express, { Request, Response } from "express";
-import { connect, IngressClient } from "@restatedev/restate-sdk-clients";
-import { durableMCPTool } from "./restate-services/durable-tool.js";
+import { connect } from "@restatedev/restate-sdk-clients";
+import { durableMCPTool } from "./restate-services/durable-mcp.js";
+import { loadGatewayConfig } from "./config/config.js";
+import { authenticateGatewayRequest, authenticateAdminRequest } from "./middleware/auth.js";
+import { TargetMCPProcessManager } from "./mcp/process-manager.js";
 
 const app = express();
 app.use(express.json());
 
-const RESTATE_INGRESS_URL = process.env.RESTATE_INGRESS_URL || "http://localhost:8080";
-const PORT = parseInt(process.env.PORT || "3000", 10);
-
 let restateClient: ReturnType<typeof connect>;
+let processManagerRef: TargetMCPProcessManager | null = null;
+
+export function setProcessManagerForGateway(manager: TargetMCPProcessManager) {
+  processManagerRef = manager;
+}
 
 export function createGatewayApp() {
-  restateClient = connect({ url: RESTATE_INGRESS_URL });
+  const config = loadGatewayConfig();
+  restateClient = connect({ url: config.restate.ingressUrl });
 
   // 1. Health check
   app.get("/health", (_req: Request, res: Response) => {
-    res.json({ status: "ok", restateIngress: RESTATE_INGRESS_URL });
+    res.json({
+      status: "ok",
+      restateIngress: config.restate.ingressUrl,
+      targetServersCount: config.targetServers.length,
+      discoveredToolsCount: processManagerRef ? processManagerRef.getDiscoveredTools().length : 0,
+    });
   });
 
-  // 2. MCP Tool Execution Endpoint (Durable Proxy)
-  app.post("/mcp/v1/call", async (req: Request, res: Response) => {
+  // 2. Discovered Tools Endpoint
+  app.get("/mcp/v1/tools", authenticateGatewayRequest, (_req: Request, res: Response) => {
+    const tools = processManagerRef ? processManagerRef.getDiscoveredTools() : [];
+    return res.json({ tools, count: tools.length });
+  });
+
+  // 3. MCP Tool Call Proxy Endpoint
+  app.post("/mcp/v1/call", authenticateGatewayRequest, async (req: Request, res: Response) => {
     try {
       const { sessionId = "default-session", toolName, args, requiresApproval } = req.body;
 
@@ -27,12 +44,9 @@ export function createGatewayApp() {
         return res.status(400).json({ error: "Missing 'toolName' parameter" });
       }
 
-      console.log(`[Gateway] Received MCP tool call: '${toolName}' (Session: ${sessionId})`);
+      console.log(`[Gateway] Dispatching tool '${toolName}' (Session: ${sessionId})`);
 
-      // Connect to Restate Durable Virtual Object for this session
       const toolClient = restateClient.objectClient(durableMCPTool, sessionId);
-
-      // Route through Restate for durable execution / policy check
       const result = await toolClient.execute({
         sessionId,
         toolName,
@@ -48,8 +62,8 @@ export function createGatewayApp() {
     }
   });
 
-  // 3. Human-in-the-Loop Resolution Endpoint (Approve / Reject)
-  app.post("/mcp/v1/approve", async (req: Request, res: Response) => {
+  // 4. Admin Human-in-the-Loop Resolution Endpoint
+  app.post("/mcp/v1/approve", authenticateAdminRequest, async (req: Request, res: Response) => {
     try {
       const { awakeableId, approve } = req.body;
 
@@ -57,9 +71,9 @@ export function createGatewayApp() {
         return res.status(400).json({ error: "Missing 'awakeableId' parameter" });
       }
 
-      console.log(`[Gateway] Resolving awakeable directly: ID=${awakeableId}, Approved=${approve}`);
+      console.log(`[Gateway] Resolving awakeable: ID=${awakeableId}, Approved=${approve}`);
 
-      // Resolve awakeable directly via Restate Ingress Client (bypass Virtual Object lock)
+      // Bypass Virtual Object key lock by resolving Awakeable directly on Restate Ingress Client
       await restateClient.resolveAwakeable(awakeableId, approve);
 
       return res.json({ success: true, awakeableId, approved: approve });
@@ -70,8 +84,8 @@ export function createGatewayApp() {
     }
   });
 
-  // 4. Audit Log Endpoint
-  app.get("/mcp/v1/audit/:sessionId", async (req: Request, res: Response) => {
+  // 5. Session Audit Log Endpoint
+  app.get("/mcp/v1/audit/:sessionId", authenticateGatewayRequest, async (req: Request, res: Response) => {
     try {
       const { sessionId } = req.params;
       const toolClient = restateClient.objectClient(durableMCPTool, sessionId);
@@ -89,11 +103,14 @@ export function createGatewayApp() {
 }
 
 export function startGateway() {
+  const config = loadGatewayConfig();
   const serverApp = createGatewayApp();
-  serverApp.listen(PORT, () => {
-    console.log(`🚀 Restate MCP Gateway listening on http://localhost:${PORT}`);
-    console.log(`   - MCP Tool Endpoint:  POST http://localhost:${PORT}/mcp/v1/call`);
-    console.log(`   - HITL Approval API:   POST http://localhost:${PORT}/mcp/v1/approve`);
-    console.log(`   - Audit Log API:       GET  http://localhost:${PORT}/mcp/v1/audit/:sessionId`);
+
+  serverApp.listen(config.server.port, config.server.host, () => {
+    console.log(`🚀 Restate MCP Gateway running on http://${config.server.host}:${config.server.port}`);
+    console.log(`   - MCP Tools List:   GET  http://localhost:${config.server.port}/mcp/v1/tools`);
+    console.log(`   - MCP Tool Call:    POST http://localhost:${config.server.port}/mcp/v1/call`);
+    console.log(`   - Admin Approve:    POST http://localhost:${config.server.port}/mcp/v1/approve`);
+    console.log(`   - Audit Logs:       GET  http://localhost:${config.server.port}/mcp/v1/audit/:sessionId`);
   });
 }

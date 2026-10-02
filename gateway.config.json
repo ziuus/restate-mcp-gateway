@@ -1,0 +1,24 @@
+{
+  "restate": {
+    "endpointPort": 9080,
+    "restateServerUrl": "http://localhost:8080"
+  },
+  "mcp": {
+    "listenPort": 3000,
+    "requireApprovalTools": [
+      "delete_file",
+      "drop_table",
+      "execute_command",
+      "send_email"
+    ]
+  },
+  "targetServers": [
+    {
+      "id": "system-tools",
+      "command": "node",
+      "args": [
+        "dist/sample-mcp-server.js"
+      ]
+    }
+  ]
+}

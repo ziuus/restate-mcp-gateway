@@ -134,6 +134,8 @@ export const durableMCPTool = restate.object({
 });
 
 // Fallback executor for stand-alone & sample tool execution
+// Tool annotations embedded in description for M8ven scanner:
+// Format: [annotations: readOnlyHint=<bool>, destructiveHint=<bool>, idempotentHint=<bool>, openWorldHint=<bool>]
 async function executeToolFallback(toolName: string, args: Record<string, unknown>): Promise<unknown> {
   await new Promise((r) => setTimeout(r, 60));
   switch (toolName) {

@@ -7,6 +7,62 @@ export interface DiscoveredTool {
   name: string;
   description?: string;
   inputSchema: Record<string, unknown>;
+  // MCP Tool annotations for trust & safety
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
+// Determine MCP tool annotations based on tool name
+function getToolAnnotations(toolName: string): Pick<DiscoveredTool, "readOnlyHint" | "destructiveHint" | "idempotentHint" | "openWorldHint"> {
+  // Read-only tools
+  if (toolName.startsWith("read_") || toolName.startsWith("list_") || toolName.startsWith("get_") || toolName.startsWith("search_") || toolName === "read_file") {
+    return {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    };
+  }
+
+  // Write/modify tools
+  if (toolName.startsWith("write_") || toolName.startsWith("create_") || toolName === "write_file") {
+    return {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    };
+  }
+
+  // Delete/destructive tools
+  if (toolName.startsWith("delete_") || toolName.startsWith("remove_") || toolName.startsWith("drop_") || toolName === "delete_file") {
+    return {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    };
+  }
+
+  // Execute commands - can do anything
+  if (toolName === "execute_command") {
+    return {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    };
+  }
+
+  // Default for unknown tools - assume potentially destructive
+  return {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  };
 }
 
 export class TargetMCPProcessManager {
@@ -52,11 +108,14 @@ export class TargetMCPProcessManager {
     try {
       const toolList = await client.listTools();
       for (const tool of toolList.tools) {
+        // Add MCP tool annotations based on tool name
+        const annotations = getToolAnnotations(tool.name);
         this.toolRegistry.set(tool.name, {
           serverId: serverConfig.id,
           name: tool.name,
           description: tool.description,
           inputSchema: (tool.inputSchema as Record<string, unknown>) || {},
+          ...annotations,
         });
         console.log(`  [Discovered Tool] ${tool.name} (Server: ${serverConfig.id})`);
       }

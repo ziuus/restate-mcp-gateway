@@ -45,7 +45,9 @@ Restate MCP Gateway is an open-source proxy middleware that sits between AI clie
 ### 1. Install Dependencies
 
 ```bash
-cd restate-mcp-gateway
+# restate-mcp-gateway
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/ziuus/restate-mcp-gateway)](https://m8ven.ai/mcp/ziuus/restate-mcp-gateway?s=readme)
 npm install
 ```
 

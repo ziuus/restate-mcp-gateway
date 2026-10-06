@@ -27,14 +27,28 @@
         "requiresApproval": true,
         "maxRetries": 3,
         "timeoutMs": 30000
+      },
+      {
+        "toolPattern": "write_.*",
+        "requiresApproval": true,
+        "maxRetries": 3,
+        "timeoutMs": 30000
       }
     ]
   },
   "targetServers": [
     {
-      "id": "system-tools",
-      "command": "node",
-      "args": ["dist/sample-mcp-server.js"],
+      "id": "sqlite",
+      "name": "SQLite Database",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "./data.db"],
+      "autoRestart": true
+    },
+    {
+      "id": "filesystem",
+      "name": "File System",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/zius/Projects/restate-mcp-gateway"],
       "autoRestart": true
     }
   ]
